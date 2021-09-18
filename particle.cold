@@ -1,0 +1,358 @@
+// From x-y ascii data from xgrafix, reconstruct the density profile
+#include "stdio.h"
+#include "stdlib.h"
+#include "malloc.h"
+
+typedef struct _Particle {
+   float x;
+   float y;
+   float z;
+   float px;
+   float py;
+   float pz;
+   int id;
+   struct _Particle *next;
+} Particle;
+
+typedef struct {
+   int core;
+   struct _Particle *next;
+} List;
+
+
+void deleteNode(List *L);
+void main(int argc, char *argv[])
+{
+   FILE *out,*in;
+   char dataName[100],fileName[100],fileName2[100],name[100];
+   int i,ii,totalCnt,targetStep,dimension,mode,species,cnt,testCnt;
+   int timeStep,id,core,minCore,maxCore,flag=0;
+   int initial,final,saveStep,n,cores,step,index,dataNum;
+   float x,y,z,px,py,pz,minX,maxX,rangeX,minPx,incline,minY,maxY,gamma;
+   float *dataX,*dataY,*dataZ,*dataPx,*dataPy,*dataPz;
+
+   int *selectIndex,*selectCore,*dataIndex,*dataCore,**input;
+   Particle *p,*New,*prev;
+   List *L;
+
+   if(argc < 6)
+   {
+      printf("particle mode dimension species\n");
+      printf("mode(1) : fileName timeStep incline rangeX minPx\n");
+      printf("mode(2) : initial final saveStep cores incline rangeX minPx\n");
+      printf("mode(3) : initial final saveStep cores inFile\n");
+      exit(0);
+   }
+   mode=atoi(argv[1]);
+   dimension=atoi(argv[2]);
+   species=atoi(argv[3]);
+
+   if(mode==1)  //2D
+   {
+     incline=atof(argv[5]);
+     timeStep=atoi(argv[6]);
+     maxX=incline*targetStep;
+     rangeX=atof(argv[7]);
+     minX=maxX-rangeX;
+     minPx=atof(argv[8]);
+
+     cnt=0;
+     in=fopen(argv[4],"r");
+     sprintf(fileName,"re%s",argv[4]);
+     out=fopen(fileName,"w");
+     if(dimension==3)
+     {
+       while(fscanf(in,"%g %g %g %g %g %g %d %d",&x,&y,&z,&px,&py,&pz,&id,&core)!=EOF)
+       {
+         if(x>minX && px>minPx)
+         {
+//         printf("%g %g %g %g %g %g %d %d\n",x,y,z,px,py,pz,id,core);
+           fprintf(out,"%g %g %g %g %g %g %d %d\n",x,y,z,px,py,pz,id,core);
+         }
+       }
+     }
+     else if(dimension==2)
+     {
+       while(fscanf(in,"%g %g %g %g %g %g %d %d",&x,&y,&px,&py,&pz,&gamma,&id,&core)!=EOF)
+       {
+         if(x>minX && px>minPx)
+         {
+//         printf("%g %g %g %g %g %g %d %d\n",x,y,z,px,py,pz,id,core);
+           fprintf(out,"%g %g %g %g %g %d %d\n",x,y,px,py,pz,id,core);
+         }
+       }
+     }
+     fclose(in);
+     fclose(out);
+     printf("%s is made\n",fileName);
+   }
+   else if(mode==2)  //2D
+   {
+     initial=atoi(argv[4]);
+     final=atoi(argv[5]);
+     saveStep=atoi(argv[6]);
+     cores=atoi(argv[7]);
+     incline=atof(argv[8]);
+     rangeX=atof(argv[9]);
+     minPx=atof(argv[10]);
+     for(step=initial; step<=final; step+=saveStep)
+     {
+       maxX=incline*step;
+       minX=maxX-rangeX;
+       sprintf(fileName2,"%did%d",species,step);
+       out=fopen(fileName2,"w");
+       for(n=0; n<cores; n++)
+       {
+         sprintf(fileName,"%dParticle%d_%d",species,step,n);
+         in=fopen(fileName,"r");
+         if(dimension==3)
+         {
+           while(fscanf(in,"%g %g %g %g %g %g %g %d %d",&x,&y,&z,&px,&py,&pz,&gamma,&id,&core)!=EOF)
+           {
+             if(x>minX && px>minPx)
+             {
+               fprintf(out,"%g %g %g %g %g %g %d %d\n",x,y,z,px,py,pz,id,core);
+             }
+           }
+         }
+         else if(dimension==2)
+         {
+           while(fscanf(in,"%g %g %g %g %g %g %d %d",&x,&y,&px,&py,&pz,&gamma,&id,&core)!=EOF)
+           {
+             if(x>minX && px>minPx)
+             {
+               fprintf(out,"%g %g %g %g %g %d %d\n",x,y,px,py,pz,id,core);
+             }
+           }
+         }
+         fclose(in);
+         printf("%dParticle%d_%d is done\n",species,step,n);
+       }
+       fclose(out);
+     }
+   }
+   else if(mode==3)  
+   {
+     step=atoi(argv[4]);
+     cores=atoi(argv[5]);
+     sprintf(fileName,"%s",argv[6]);
+
+     input=(int **)malloc(cores*sizeof(int *) );
+     for(i=0; i<cores; i++)
+       input[i]=(int *)malloc(2*sizeof(int ) );
+     for(i=0; i<cores; i++)
+       input[i][0]=0;
+     
+     in=fopen(fileName,"r");
+     if(dimension==3)
+     {
+       while(fscanf(in,"%g %g %g %g %g %g %d %d",
+                    &x,&y,&z,&px,&py,&pz,&id,&core)!=EOF)
+         input[core][0]++;
+     }
+     else if(dimension==2)
+     {
+       while(fscanf(in,"%g %g %g %g %g %d %d",
+                    &x,&y,&px,&py,&pz,&id,&core)!=EOF)
+         input[core][0]++;
+     }
+     fclose(in);
+
+     dataNum=0;
+     for(i=0; i<cores; i++)
+       if(input[i][0])
+         dataNum++;
+
+     L=(List *)malloc((dataNum+1)*sizeof(List) );
+     for(i=0; i<dataNum+1; i++)
+       L[i].next=NULL;
+
+     index=1;
+     for(i=0; i<cores; i++)
+       if(input[i][0])
+       {
+         input[i][1]=index;
+         L[index].core=i;
+         index++;
+       }
+
+
+     in=fopen(fileName,"r");
+     if(dimension==3)
+     {
+       while(fscanf(in,"%g %g %g %g %g %g %d %d",
+                    &x,&y,&z,&px,&py,&pz,&id,&core)!=EOF)
+       {
+         index=input[core][1];
+         New = (Particle *)malloc(sizeof(Particle)); 
+         New->next = L[index].next;
+         L[index].next = New;
+
+         New->x=x;
+         New->y=y;
+         New->z=z;
+         New->px=px;
+         New->py=py;
+         New->pz=pz;
+         New->id=id;       
+       }
+     }
+     else if(dimension==2)
+     {
+       while(fscanf(in,"%g %g %g %g %g %d %d",
+                    &x,&y,&px,&py,&pz,&id,&core)!=EOF)
+       {
+         index=input[core][1];
+         New = (Particle *)malloc(sizeof(Particle)); 
+         New->next = L[index].next;
+         L[index].next = New;
+
+         New->x=x;
+         New->y=y;
+         New->px=px;
+         New->py=py;
+         New->pz=pz;
+         New->id=id;       
+       }
+     }
+     fclose(in);
+
+     sprintf(fileName2,"%did%d",species,step);
+     out=fopen(fileName2,"w");
+
+     for(i=0; i<cores; i++)
+     {
+       if(input[i][0]>0)
+       {
+         sprintf(fileName,"%dParticle%d_%d",species,step,i);
+         in=fopen(fileName,"r");
+
+         if(dimension==3)
+         {
+           while(fscanf(in,"%g %g %g %g %g %g %g %d %d",
+                        &x,&y,&z,&px,&py,&pz,&gamma,&id,&core)!=EOF)
+           {
+             index=input[core][1];
+             p=L[index].next;
+             cnt=1;
+             while(p)
+             {
+               if(cnt==1)
+                 prev=p;
+  
+               if(id==p->id)
+               {
+                 fprintf(out,"%g %g %g %g %g %g %d %d\n",x,y,z,px,py,pz,id,core);
+                 if(cnt==1)
+                 {
+                   L[index].next=p->next;
+                   p->next=NULL;
+                   free(p);
+                   p=L[index].next;
+                 }
+                 else
+                 {
+                   prev->next=p->next;
+                   p->next=NULL;
+                   free(p);
+                   p=prev->next;
+                 }
+               }
+               else
+               {
+                 prev=p;
+                 p=p->next;
+                 cnt++;
+               }
+             }
+           }
+         }	//End of if(dimension=3)
+         else if(dimension==2)
+         {
+           while(fscanf(in,"%g %g %g %g %g %g %d %d",
+                        &x,&y,&px,&py,&pz,&gamma,&id,&core)!=EOF)
+           {
+             index=input[core][1];
+             if(index>0)
+             {
+printf("index=%d, core=%d\n",index,core);
+               p=L[index].next;
+               cnt=1;
+               while(p)
+               {
+                 if(cnt==1)
+                   prev=p;
+  
+                 if(id==p->id)
+                 {
+                   fprintf(out,"%g %g %g %g %g %d %d\n",x,y,px,py,pz,id,core);
+                   if(cnt==1)
+                   {
+                     L[index].next=p->next;
+                     p->next=NULL;
+                     free(p);
+                     p=L[index].next;
+                   }
+                   else
+                   {
+                     prev->next=p->next;
+                     p->next=NULL;
+                     free(p);
+                     p=prev->next;
+                   }
+                 }
+                 else
+                 {
+                   prev=p;
+                   p=p->next;
+                   cnt++;
+                 }
+               }
+             }
+           }
+         }	//End of if(dimension=2)
+
+         fclose(in);
+       }
+//       printf("%dParticle%d_%d is done\n",species,step,i);
+     }
+     fclose(out);
+     printf("%s is made.\n",fileName2);
+/*
+     for(i=0; i<dataNum; i++)
+     {
+       p=L[i].next;
+       while(p)
+       {
+          printf("%g %g %g %d %d\n",p->x,p->y,p->z,p->id,L[i].core);
+          p=p->next;
+       }
+     }
+*/
+
+     for(i=0; i<cores; i++)
+       free(input[i]);
+     free(input);
+
+     for(i=0; i<dataNum; i++)
+       deleteNode(&L[i]);
+     free(L);
+
+   }
+}
+
+void deleteNode(List *L)
+{
+  Particle *p,*tmp;
+  
+  p=L->next;
+  while(p)
+  {
+    tmp=p->next;
+    L->next=tmp;
+    p->next=NULL;
+    free(p);
+    p=L->next;
+  }
+  free(L->next);
+}

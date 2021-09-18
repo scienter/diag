@@ -1,0 +1,257 @@
+// From x-y ascii data from xgrafix, reconstruct the density profile
+#include "stdio.h"
+#include "stdlib.h"
+#include "malloc.h"
+#include "hdf5.h"
+#include "hdf5_hl.h"
+
+
+void main(int argc, char *argv[])
+{
+   FILE *out;
+   char dataName[100],fileName[100],name[100];
+   int i,ii,step,totalCnt,targetStep,dimension,mode,species,cnt;
+
+   int index,initial,final,timeStep,id,core;
+   float x,px,minX,maxX,rangeX,minPx,incline;
+   float *dataX,*dataY,*dataPx;
+   int *selectIndex,*selectCore,*dataIndex,*dataCore;
+   void restoreIntMeta(char *fileName,char *dataName,int *data);
+   void restoreFloatArray(char *fileName,char *dataName,float *data,int totalCnt);
+   void restoreIntArray(char *fileName,char *dataName,int *data,int totalCnt);
+
+   if(argc < 6)
+   {
+      printf("hdf_particle mode dimension species targetStep incline rangeX\n");
+      printf("mode(1):minPx initial final timeStep\n");
+      exit(0);
+   }
+   mode=atoi(argv[1]);
+   dimension=atoi(argv[2]);
+   species=atoi(argv[3]);
+   targetStep=atoi(argv[4]);
+   incline=atof(argv[5]);
+   maxX=targetStep*incline;
+   rangeX=atof(argv[6]);
+   minX=maxX-rangeX;
+
+   sprintf(fileName,"%dParticle%d.h5",species,targetStep);
+   sprintf(dataName,"/totalCnt");
+   restoreIntMeta(fileName,dataName,&totalCnt);
+
+   switch((mode-1)*3+dimension)   {
+   case ((1-1)*3+2) :
+     minPx=atof(argv[7]);
+     initial=atoi(argv[8]);
+     final=atoi(argv[9]);
+     timeStep=atoi(argv[10]);
+
+     dataX=(float *)malloc(totalCnt*sizeof(float));
+     dataPx=(float *)malloc(totalCnt*sizeof(float));
+     dataIndex=(int *)malloc(totalCnt*sizeof(int));
+     dataCore=(int *)malloc(totalCnt*sizeof(int));
+
+     sprintf(dataName,"/x");
+     restoreFloatArray(fileName,dataName,dataX,totalCnt);
+     sprintf(dataName,"/px");
+     restoreFloatArray(fileName,dataName,dataPx,totalCnt);
+     sprintf(dataName,"/index");
+     restoreIntArray(fileName,dataName,dataIndex,totalCnt);
+     sprintf(dataName,"/core");
+     restoreIntArray(fileName,dataName,dataCore,totalCnt);
+
+     sprintf(name,"%dParticle%d",species,targetStep);
+     out=fopen(name,"w");
+     cnt=0;
+     for (i=0; i<totalCnt; i++)
+     {
+       x=dataX[i];
+       px=dataPx[i];
+       id=dataIndex[i];
+       core=dataCore[i];
+       if(x>minX && px>minPx)
+       {
+         cnt++;
+         fprintf(out,"%g %g %d %d\n",x,px,id,core);
+       }
+     }
+     fclose(out);
+     printf("%dParticle%d is saved\n",species,targetStep);
+
+     selectIndex=(int *)malloc(cnt*sizeof(int));
+     selectCore=(int *)malloc(cnt*sizeof(int));
+
+     index=0;
+     for (i=0; i<totalCnt; i++)
+     {
+       x=dataX[i];
+       px=dataPx[i];
+       if(x>minX && px>minPx)
+       {
+         selectIndex[index]=dataIndex[i];
+         selectCore[index]=dataCore[i];
+         index++;
+       }
+     }     
+     free(dataX);
+     free(dataPx);
+     free(dataIndex);
+     free(dataCore);
+     
+     for(step=initial; step<=final; step+=timeStep)
+     {
+       sprintf(fileName,"%dParticle%d.h5",species,step);
+       sprintf(dataName,"/totalCnt");
+       restoreIntMeta(fileName,dataName,&totalCnt);
+       
+       dataX=(float *)malloc(totalCnt*sizeof(float));
+       dataY=(float *)malloc(totalCnt*sizeof(float));
+       dataIndex=(int *)malloc(totalCnt*sizeof(int));
+       dataCore=(int *)malloc(totalCnt*sizeof(int));
+
+       sprintf(dataName,"/x");
+       restoreFloatArray(fileName,dataName,dataX,totalCnt);
+       sprintf(dataName,"/y");
+       restoreFloatArray(fileName,dataName,dataY,totalCnt);
+       sprintf(dataName,"/index");
+       restoreIntArray(fileName,dataName,dataIndex,totalCnt);
+       sprintf(dataName,"/core");
+       restoreIntArray(fileName,dataName,dataCore,totalCnt);
+
+       sprintf(name,"%did%d",species,step);
+       out=fopen(name,"w");
+       for(i=0; i<totalCnt; i++)
+       {
+         for(ii=0; ii<cnt; ii++)
+         {
+           if(dataIndex[i]==selectIndex[ii] && 
+               dataCore[i]==selectCore[ii])
+             fprintf(out,"%g %g\n",dataX[i],dataY[i]);
+         }
+//         printf("%d/%d\n",i,totalCnt);
+       }
+       fclose(out);
+
+       free(dataX);
+       free(dataPx);
+       free(dataIndex);
+       free(dataCore);
+     }
+     break;
+
+     free(selectIndex);
+     free(selectCore);
+   }
+     
+
+
+
+/*
+    ne=(float **)malloc((Nx+1)*sizeof(float *));
+   xc=(float *)malloc((Nx+1)*sizeof(float));
+   yc=(float *)malloc((Ny+1)*sizeof(float));
+   for(i=0;i<=Nx;i++)  ne[i]=(float *)malloc((Ny+1)*sizeof(float));
+
+   for(i=0;i<=Nx;i++)
+      for(j=0;j<=Ny;j++)  ne[i][j]=0.0;
+
+   for(i=0;i<=Nx;i++)  xc[i]=xmin+i*dx;
+   for(j=0;j<=Ny;j++)  yc[j]=ymin+j*dy;
+
+   if(mode==0)     //find particle
+   {
+
+     sprintf(name,"/x");
+     restoreFloatArray(fileName,name,dataX,dataNum);
+     sprintf(name,"/y");
+     restoreFloatArray(fileName,name,dataY,dataNum);
+     for(ii=0; ii<dataNum; ii++)
+     {
+       i=(int)((dataX[ii]-xmin)/dx);
+       j=(int)((dataY[ii]-ymin)/dy);
+       if(0 < i && i< Nx && 0 < j && j < Ny)
+       {
+         ne[i][j]+=(xc[i+1]-dataX[ii])*(yc[j+1]-dataY[ii])/dx/dy*np2c1;
+         ne[i+1][j]+=(dataX[ii]-xc[i])*(yc[j+1]-dataY[ii])/dx/dy*np2c1;
+         ne[i][j+1]+=(xc[i+1]-dataX[ii])*(dataY[ii]-yc[j])/dx/dy*np2c1;
+         ne[i+1][j+1]+=(dataX[ii]-xc[i])*(dataY[ii]-yc[j])/dx/dy*np2c1;
+       }
+     }
+     free(dataX);
+     free(dataY);
+   }
+
+   else if(mode==2)
+   {
+      in2=fopen(argv[3],"r");
+//         fgets(str,100,in); 
+//         printf("%s\n",str);
+   
+      while(fscanf(in,"%g  %g  %g  %g  %g  %g  %g  %g  %g  %g",&x,&y,&ux,&uy,&uz,&superP,&index,&pmF0,&pmF1,&Asq)!=EOF)
+      {
+         i=(int)((x-xmin)/dx);
+         j=(int)((y-ymin)/dy);
+         if(0 < i && i< Nx && 0 < j && j < Ny)
+         {
+            ne[i][j]+=(xc[i+1]-x)*(yc[j+1]-y)/dx/dy*np2c2;
+            ne[i+1][j]+=(x-xc[i])*(yc[j+1]-y)/dx/dy*np2c2;
+            ne[i][j+1]+=(xc[i+1]-x)*(y-yc[j])/dx/dy*np2c2;
+            ne[i+1][j+1]+=(x-xc[i])*(y-yc[j])/dx/dy*np2c2;
+         }
+      }
+      fclose(in2);
+   }
+*/
+
+}
+
+void restoreFloatArray(char *fileName,char *dataName,float *data,int totalCnt)
+{
+  hid_t file_id,dset_id,filespace;
+  hsize_t metaDim[1];
+  herr_t status;
+
+  metaDim[0]=totalCnt;
+
+  file_id=H5Fopen(fileName,H5F_ACC_RDWR,H5P_DEFAULT);
+  filespace=H5Screate_simple(1,metaDim,NULL);
+  dset_id=H5Dopen2(file_id,dataName,H5P_DEFAULT);
+  status=H5Dread(dset_id,H5T_NATIVE_FLOAT,H5S_ALL,H5S_ALL,H5P_DEFAULT,data);
+  H5Dclose(dset_id);
+  H5Sclose(filespace);
+  H5Fclose(file_id);
+}
+
+void restoreIntArray(char *fileName,char *dataName,int *data,int totalCnt)
+{
+  hid_t file_id,dset_id,filespace;
+  hsize_t metaDim[1];
+  herr_t status;
+
+  metaDim[0]=totalCnt;
+
+  file_id=H5Fopen(fileName,H5F_ACC_RDWR,H5P_DEFAULT);
+  filespace=H5Screate_simple(1,metaDim,NULL);
+  dset_id=H5Dopen2(file_id,dataName,H5P_DEFAULT);
+  status=H5Dread(dset_id,H5T_NATIVE_INT,H5S_ALL,H5S_ALL,H5P_DEFAULT,data);
+  H5Dclose(dset_id);
+  H5Sclose(filespace);
+  H5Fclose(file_id);
+}
+
+void restoreIntMeta(char *fileName,char *dataName,int *data)
+{
+  hid_t file_id,dset_id,filespace;
+  hsize_t metaDim[1];
+  herr_t status;
+
+  file_id=H5Fopen(fileName,H5F_ACC_RDWR,H5P_DEFAULT);
+  filespace=H5Screate_simple(1,metaDim,NULL);
+  dset_id=H5Dopen2(file_id,dataName,H5P_DEFAULT);
+  status=H5Dread(dset_id,H5T_NATIVE_INT,H5S_ALL,H5S_ALL,H5P_DEFAULT,data);
+  H5Dclose(dset_id);
+  H5Sclose(filespace);
+  H5Fclose(file_id);
+}
+
+

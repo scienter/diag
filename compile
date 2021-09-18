@@ -1,0 +1,52 @@
+#!/bin/bash
+
+
+# beam server
+#CFLAGS="-I/opt/hdf5/1.8.20/include"
+#LDFLAGS="-L/opt/hdf5/1.8.20/lib"
+
+# PAL ubuntu
+#CFLAGS="-I/usr/lib/x86_64-linux-gnu/hdf5/openmpi/include" 
+#LDFLAGS="-L/usr/lib/x86_64-linux-gnu/hdf5/openmpi" 
+
+# server
+CFLAGS="-I/opt/hdf5/1.10.3/include" 
+LDFLAGS="-L/opt/hdf5/1.10.3/lib" 
+
+
+mpicc -o felField felField.c -lm -lhdf5 ${CFLAGS} ${LDFLAGS}
+echo 'felField is made.'
+
+mpicc -o felParticle felParticle.c -lm -lhdf5 ${CFLAGS} ${LDFLAGS}
+echo 'felParticle is made.'
+
+gcc -o fft fft.c -lm
+echo 'fft is made.'
+
+mpicc -o hdf_field hdf_field.c -lm -lhdf5 ${CFLAGS} ${LDFLAGS}
+echo 'hdf_field is made.'
+
+mpicc -o hdf_particle hdf_particle.c -lm -lhdf5 ${CFLAGS} ${LDFLAGS}
+echo 'hdf_particle is made.'
+
+mpicc -o resolField resolField.c -lm -lhdf5 ${CFLAGS} ${LDFLAGS}
+echo 'resolField is made.'
+
+gcc -o emittance emittance.c -lm
+echo 'emittance is made.'
+
+mpicc -o particle particle.c -lm -lhdf5 ${CFLAGS} ${LDFLAGS}
+echo 'particle is made.'
+
+gcc -o centerField centerField.c -lm
+echo 'centerField is made.'
+
+mpicc -o track track.c -lm -lhdf5 ${CFLAGS} ${LDFLAGS}
+echo 'track is made.'
+
+mpicc -o sync_ref sync20210826.c -lm -lhdf5 ${CFLAGS} ${LDFLAGS}
+echo 'sync_ref is made.'
+
+mpicc -o sync sync.c -lm -lhdf5 ${CFLAGS} ${LDFLAGS}
+echo 'sync is made.'
+

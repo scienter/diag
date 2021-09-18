@@ -1,0 +1,6 @@
+#!/bin/bash
+
+
+mkdir dump
+mv dump*150000.h5
+rm *.h5

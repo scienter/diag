@@ -1,0 +1,34 @@
+#!/bin/bash
+
+start=2000
+end=200000
+timeStep=2000
+
+numCore=8
+slope=4.0e-8
+rangeX=80e-6
+rangeY=50e-6
+maxE=600
+
+mpirun -np $numCore ~/diag/hdf_particle 1 0 $start $end $timeStep 5 0 0
+echo "particle save is done."
+sleep 2
+
+~/diag/particle 1 $start $end $timeStep Particle 0 $maxE $maxE 1 0 0
+echo "spectrum is done."
+sleep 2
+
+~/diag/particle 3 $start $end $timeStep 0 $maxE 400 $slope $rangeX 400 0 1 0
+echo "denSpec is done."
+sleep 2
+
+~/diag/hdf_field 0 $start $end $timeStep 1 1 fieldSplit 0 -$rangeY $rangeY 0
+echo "field save is done."
+sleep 2
+
+~/diag/hdf_field 0 $start $end $timeStep 1 1 0density 0 -$rangeY $rangeY 0
+echo "density save is done."
+sleep 2
+
+~/diag/findMax 0 $start $end $timeStep cen 0 $rangeX 2
+echo "findMax is done."

@@ -1,0 +1,205 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <mpi.h>
+#include <hdf5.h>
+#include <hdf5_hl.h>
+
+
+void restoreIntMeta(char *fileName,char *dataName,int *data,int dataCnt);
+void restoreDoubleMeta(char *fileName,char *dataName,double *data,int dataCnt);
+void restore_ptclCnt_attr_HDF(int *cnt,char *fileName,char *groupName,char *dataName,char *attrName);
+void restore_Slice_Particle_HDF(double *data,char *fileName,char *groupName,char *dataName,int cnt,int dataCnt);
+
+void main(int argc, char *argv[])
+{
+   int mode,species,initial,final,timeStep,step,sliceN;
+   int minI,maxI,i,rank,ranks,cnt,n,N,dataCnt=9,sliceI;
+   double theta,z,x,y,px,py,gamma,weight,index,slcieI,dPhi,dz,bucketZ,minZ,*data;
+   double tmp,w;
+   char fileName[100],dataName[100],groupName[100],attrName[100],outFile[100];
+   FILE *out;
+   int myrank, nTasks;
+   MPI_Status status;
+
+   MPI_Init(&argc,&argv);
+   MPI_Comm_size(MPI_COMM_WORLD, &nTasks);
+   MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+
+   if(argc<6) {
+      printf("felParticle mode ranks species initial final step\n");
+      exit(0);
+   } else ;
+
+   mode=atoi(argv[1]);
+   ranks=atoi(argv[2]);
+   species=atoi(argv[3]);
+   initial=atoi(argv[4]);
+   final=atoi(argv[5]);
+   timeStep=atoi(argv[6]);
+
+   if(mode==0)  {
+      
+   }
+   else ;
+
+   for(step=initial; step<=final; step+=timeStep)
+   {
+      sprintf(outFile,"%dParticle%d",species,step);
+      out=fopen(outFile,"w");
+
+      for(rank=0; rank<ranks; rank++)  {
+         sprintf(fileName,"dump/particle%d_%d.h5",step,rank);
+         sprintf(groupName,"%d",species);
+         restoreIntMeta(fileName,"minI",&minI,1);
+         restoreIntMeta(fileName,"maxI",&maxI,1);
+         restoreDoubleMeta(fileName,"dPhi",&dPhi,1);
+         restoreDoubleMeta(fileName,"dz",&dz,1);
+         restoreDoubleMeta(fileName,"bucketZ",&bucketZ,1);
+         restoreDoubleMeta(fileName,"minZ",&minZ,1);
+         sliceN=maxI-minI;
+         printf("minI=%d,maxI=%d,sliceN=%d,dPhi=%g\n",minI,maxI,sliceN,dPhi);
+
+
+         for(i=minI; i<maxI; i++) {
+           sprintf(dataName,"%d",i);
+           sprintf(attrName,"ptclCnt");
+           restore_ptclCnt_attr_HDF(&cnt,fileName,groupName,dataName,attrName);
+
+	   N=cnt*dataCnt;
+           data=(double *)malloc(N*sizeof(double ));
+           restore_Slice_Particle_HDF(data,fileName,groupName,dataName,cnt,dataCnt);
+          
+	   for(n=0; n<cnt; n++) {
+	     theta=data[n*dataCnt+0];
+             tmp=theta/dPhi;
+             w=tmp-(int)tmp;
+             theta=w*dPhi;
+             if(theta>dPhi)   theta=theta-dPhi;
+             else if(theta<0) theta=dPhi+theta;	
+             z=step*dz+(i+theta/dPhi)*bucketZ+minZ;
+	     x=data[n*dataCnt+1];
+	     y=data[n*dataCnt+2];
+	     gamma=data[n*dataCnt+3];
+	     px=data[n*dataCnt+4];
+	     py=data[n*dataCnt+5];
+	     weight=data[n*dataCnt+6];
+	     sliceI=data[n*dataCnt+7];
+	     index=data[n*dataCnt+8];
+	     fprintf(out,"%g %.15g %g %g %.10g %g %g %g %g %g\n",theta,z,x,y,gamma,px,py,weight,slcieI,index);           
+	   }
+	   free(data);
+	 }
+//      sprintf(dataName,"%d",species);
+      }
+      fclose(out);
+      printf("%s is made.\n",outFile);
+   }
+
+
+}
+
+void restoreIntMeta(char *fileName,char *dataName,int *data,int dataCnt)
+{
+  hid_t file_id,dset_id,filespace;
+  hsize_t metaDim[1];
+  herr_t status;
+
+  metaDim[0]=dataCnt;
+
+  file_id=H5Fopen(fileName,H5F_ACC_RDWR,H5P_DEFAULT);
+  filespace=H5Screate_simple(1,metaDim,NULL);
+  dset_id=H5Dopen2(file_id,dataName,H5P_DEFAULT);
+  status=H5Dread(dset_id,H5T_NATIVE_INT,H5S_ALL,H5S_ALL,H5P_DEFAULT,data);
+  H5Dclose(dset_id);
+  H5Sclose(filespace);
+  H5Fclose(file_id);
+}
+
+void restoreDoubleMeta(char *fileName,char *dataName,double *data,int dataCnt)
+{
+  hid_t file_id,dset_id,filespace;
+  hsize_t metaDim[1];
+  herr_t status;
+
+  metaDim[0]=dataCnt;
+
+  file_id=H5Fopen(fileName,H5F_ACC_RDWR,H5P_DEFAULT);
+  filespace=H5Screate_simple(1,metaDim,NULL);
+  dset_id=H5Dopen2(file_id,dataName,H5P_DEFAULT);
+  status=H5Dread(dset_id,H5T_NATIVE_DOUBLE,H5S_ALL,H5S_ALL,H5P_DEFAULT,data);
+  H5Dclose(dset_id);
+  H5Sclose(filespace);
+  H5Fclose(file_id);
+}
+
+void restore_Slice_Particle_HDF(double *data,char *fileName,char *groupName,char *dataName,int cnt,int dataCnt)
+{
+   int myrank, nTasks;
+   MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+   MPI_Comm_size(MPI_COMM_WORLD, &nTasks);
+
+   hid_t file_id,group_id,plist_id,dset_id,attr_id,as_id;
+   hid_t dataspace,memspace;
+   hsize_t dimsf[2],offset[2],stride[2],block[2],count[2];
+   herr_t ierr;
+
+   //open file
+   file_id=H5Fopen(fileName,H5F_ACC_RDWR,H5P_DEFAULT);
+
+   //open a group
+   group_id=H5Gopen2(file_id,groupName,H5P_DEFAULT);
+
+   //set dataset
+   dset_id=H5Dopen2(group_id,dataName,H5P_DEFAULT);
+
+   //write the dataset
+//   plist_id=H5Pcreate(H5P_DATASET_XFER);
+//   H5Pset_dxpl_mpio(plist_id,H5FD_MPIO_INDEPENDENT);
+//   H5Dwrite(dset_id,H5T_NATIVE_DOUBLE,memspace,dataspace,plist_id,data);
+   H5Dread(dset_id,H5T_NATIVE_DOUBLE,H5S_ALL,H5S_ALL,H5P_DEFAULT,data);
+
+//   H5Pclose(plist_id);
+   H5Dclose(dset_id);
+
+   //close the file
+   H5Gclose(group_id);
+   H5Fclose(file_id);
+}
+
+void restore_ptclCnt_attr_HDF(int *cnt,char *fileName,char *groupName,char *dataName,char *attrName)
+{
+   int myrank, nTasks;
+   MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+   MPI_Comm_size(MPI_COMM_WORLD, &nTasks);
+
+   hid_t file_id,group_id,plist_id,dataset_id,attribute_id,dataspace_id;
+   hsize_t dims;
+   herr_t ierr;
+
+   //open file
+   file_id=H5Fopen(fileName,H5F_ACC_RDWR,H5P_DEFAULT);
+//   ierr=H5Pclose(plist_id);
+
+   //open a group
+   group_id=H5Gopen2(file_id,groupName,H5P_DEFAULT);
+
+   //Open an existing dataset.
+   dataset_id = H5Dopen2(group_id,dataName,H5P_DEFAULT);
+
+   // Create dataspace for attribute  
+//   dims=1;
+//   dataspace_id=H5Screate_simple(1,&dims,NULL);
+
+   // open a dataset attribute
+   attribute_id=H5Aopen(dataset_id,attrName,H5P_DEFAULT);
+
+   // read the dataset
+   H5Aread(attribute_id,H5T_NATIVE_INT,cnt);
+
+   H5Aclose(attribute_id);
+//   H5Sclose(dataspace_id);
+   H5Dclose(dataset_id);
+   H5Gclose(group_id);
+   H5Fclose(file_id);
+}

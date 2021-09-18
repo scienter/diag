@@ -1,0 +1,202 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <mpi.h>
+#include <hdf5.h>
+#include <hdf5_hl.h>
+#include <complex.h>
+
+
+void restoreIntMeta(char *fileName,char *dataName,int *data,int dataCnt);
+void restoreDoubleMeta(char *fileName,char *dataName,double *data,int dataCnt);
+void restore_ptclCnt_attr_HDF(int *cnt,char *fileName,char *groupName,char *dataName,char *attrName);
+void restore_Field_HDF(double *data,char *fileName,char *dataName,int cnt,int dataCnt);
+
+void main(int argc, char *argv[])
+{
+   int mode,species,initial,final,timeStep,step,sliceN;
+   int minI,maxI,i,h,harmony,rank,ranks,cnt,n,N,dataCnt=9,sliceI;
+   double theta,z,x,dz,bucketZ,minZ,*data;
+   double tmp,w,absU,absEz,*dataU,*dataEz;
+   double complex **U,**Ez;
+   char fileName[100],dataName[100],groupName[100],attrName[100],outFile[100];
+   FILE *out;
+   int myrank, nTasks;
+   MPI_Status status;
+
+   MPI_Init(&argc,&argv);
+   MPI_Comm_size(MPI_COMM_WORLD, &nTasks);
+   MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+
+   if(argc<4) {
+      printf("felField mode initial final step\n");
+      exit(0);
+   } else ;
+
+   mode=atoi(argv[1]);
+   initial=atoi(argv[2]);
+   final=atoi(argv[3]);
+   timeStep=atoi(argv[4]);
+
+   if(mode==0)  {
+      
+   }
+   else ;
+
+   for(step=initial; step<=final; step+=timeStep)
+   {
+      sprintf(fileName,"dump/field%d.h5",step);
+      restoreIntMeta(fileName,"sliceN",&sliceN,1);
+      restoreIntMeta(fileName,"harmony",&harmony,1);
+      restoreDoubleMeta(fileName,"minZ",&minZ,1);
+      restoreDoubleMeta(fileName,"dz",&dz,1);
+      restoreDoubleMeta(fileName,"bucketZ",&bucketZ,1);
+
+      N=sliceN*2;
+      dataU=(double *)malloc(N*sizeof(double ));
+      dataEz=(double *)malloc(N*sizeof(double ));
+      U=(double complex **)malloc(harmony*sizeof(double complex *));
+      Ez=(double complex **)malloc(harmony*sizeof(double complex *));
+      for(h=0; h<harmony; h++) {
+        U[h]=(double complex *)malloc(sliceN*sizeof(double complex ));
+        Ez[h]=(double complex *)malloc(sliceN*sizeof(double complex ));
+      }
+      for(h=0; h<harmony; h++) {
+        sprintf(dataName,"U%d",h);	
+        restore_Field_HDF(dataU,fileName,dataName,sliceN,2);
+        sprintf(dataName,"Ez%d",h);	
+        restore_Field_HDF(dataEz,fileName,dataName,sliceN,2);
+       
+	for(i=0; i<sliceN; i++) {
+          U[h][i]=dataU[i*2+0]+I*dataU[i*2+1];
+          Ez[h][i]=dataEz[i*2+0]+I*dataEz[i*2+1];
+	}
+      }
+          
+      sprintf(outFile,"field%d",step);
+      out=fopen(outFile,"w");
+      for(i=0; i<sliceN; i++) {
+   	 z=minZ+i*bucketZ+step*dz;
+	 fprintf(out,"%.15g ",z);           
+         for(h=0; h<harmony; h++) {
+	   absU=cabs(U[h][i]);
+	   absEz=cabs(Ez[h][i]);
+	   fprintf(out,"%g %g ",absU,absEz);           
+	 }
+	 fprintf(out,"\n");
+      }
+      fclose(out);
+      printf("%s is made.\n",outFile);
+
+      free(dataU);
+      free(dataEz);
+      for(h=0; h<harmony; h++) { free(U[h]); free(Ez[h]); } free(U); free(Ez);
+   }
+
+
+}
+
+void restoreIntMeta(char *fileName,char *dataName,int *data,int dataCnt)
+{
+  hid_t file_id,dset_id,filespace;
+  hsize_t metaDim[1];
+  herr_t status;
+
+  metaDim[0]=dataCnt;
+
+  file_id=H5Fopen(fileName,H5F_ACC_RDWR,H5P_DEFAULT);
+  filespace=H5Screate_simple(1,metaDim,NULL);
+  dset_id=H5Dopen2(file_id,dataName,H5P_DEFAULT);
+  status=H5Dread(dset_id,H5T_NATIVE_INT,H5S_ALL,H5S_ALL,H5P_DEFAULT,data);
+  H5Dclose(dset_id);
+  H5Sclose(filespace);
+  H5Fclose(file_id);
+}
+
+void restoreDoubleMeta(char *fileName,char *dataName,double *data,int dataCnt)
+{
+  hid_t file_id,dset_id,filespace;
+  hsize_t metaDim[1];
+  herr_t status;
+
+  metaDim[0]=dataCnt;
+
+  file_id=H5Fopen(fileName,H5F_ACC_RDWR,H5P_DEFAULT);
+  filespace=H5Screate_simple(1,metaDim,NULL);
+  dset_id=H5Dopen2(file_id,dataName,H5P_DEFAULT);
+  status=H5Dread(dset_id,H5T_NATIVE_DOUBLE,H5S_ALL,H5S_ALL,H5P_DEFAULT,data);
+  H5Dclose(dset_id);
+  H5Sclose(filespace);
+  H5Fclose(file_id);
+}
+
+void restore_Field_HDF(double *data,char *fileName,char *dataName,int cnt,int dataCnt)
+{
+   int myrank, nTasks;
+   MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+   MPI_Comm_size(MPI_COMM_WORLD, &nTasks);
+
+   hid_t file_id,group_id,plist_id,dset_id,attr_id,as_id;
+   hid_t dataspace,memspace;
+   hsize_t dimsf[2],offset[2],stride[2],block[2],count[2];
+   herr_t ierr;
+
+   //open file
+   file_id=H5Fopen(fileName,H5F_ACC_RDWR,H5P_DEFAULT);
+
+   //open a group
+//   group_id=H5Gopen2(file_id,groupName,H5P_DEFAULT);
+
+   //set dataset
+   dset_id=H5Dopen2(file_id,dataName,H5P_DEFAULT);
+
+   //write the dataset
+//   plist_id=H5Pcreate(H5P_DATASET_XFER);
+//   H5Pset_dxpl_mpio(plist_id,H5FD_MPIO_INDEPENDENT);
+//   H5Dwrite(dset_id,H5T_NATIVE_DOUBLE,memspace,dataspace,plist_id,data);
+   H5Dread(dset_id,H5T_NATIVE_DOUBLE,H5S_ALL,H5S_ALL,H5P_DEFAULT,data);
+
+//   H5Pclose(plist_id);
+   H5Dclose(dset_id);
+
+   //close the file
+//   H5Gclose(group_id);
+   H5Fclose(file_id);
+}
+
+void restore_ptclCnt_attr_HDF(int *cnt,char *fileName,char *groupName,char *dataName,char *attrName)
+{
+   int myrank, nTasks;
+   MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+   MPI_Comm_size(MPI_COMM_WORLD, &nTasks);
+
+   hid_t file_id,group_id,plist_id,dataset_id,attribute_id,dataspace_id;
+   hsize_t dims;
+   herr_t ierr;
+
+   //open file
+   file_id=H5Fopen(fileName,H5F_ACC_RDWR,H5P_DEFAULT);
+//   ierr=H5Pclose(plist_id);
+
+   //open a group
+   group_id=H5Gopen2(file_id,groupName,H5P_DEFAULT);
+
+   //Open an existing dataset.
+   dataset_id = H5Dopen2(group_id,dataName,H5P_DEFAULT);
+
+   // Create dataspace for attribute  
+//   dims=1;
+//   dataspace_id=H5Screate_simple(1,&dims,NULL);
+
+   // open a dataset attribute
+   attribute_id=H5Aopen(dataset_id,attrName,H5P_DEFAULT);
+
+   // read the dataset
+   H5Aread(attribute_id,H5T_NATIVE_INT,cnt);
+
+   H5Aclose(attribute_id);
+//   H5Sclose(dataspace_id);
+   H5Dclose(dataset_id);
+   H5Gclose(group_id);
+   H5Fclose(file_id);
+}
